@@ -5,7 +5,8 @@ from importlib import import_module
 
 from mkdocs.plugins import BasePlugin
 
-from .utils import parse_class
+from .parser import parse_class
+
 
 class Numkdoc(BasePlugin):
     # caching classes to markdown for fast hot_reload
@@ -42,6 +43,7 @@ class Numkdoc(BasePlugin):
                         self._cache[name] = parse_class(data)
 
             # replace the call with the documentation of the class
-            markdown = markdown.replace("{{"+class_string+"}}", self._cache[class_name])
+            markdown = markdown.replace(
+                "{{"+class_string+"}}", self._cache[class_name])
 
         return markdown
