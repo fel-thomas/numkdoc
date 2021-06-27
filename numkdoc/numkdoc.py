@@ -1,3 +1,4 @@
+from numkdoc.utils import REPLACES
 import os
 import re
 import inspect
@@ -40,9 +41,12 @@ class Numkdoc(BasePlugin):
                 # parse and store all the classes in the module
                 for name, data in inspect.getmembers(module, inspect.isclass):
                     if name not in self._cache:
-                        self._cache[name] = parse_class(data)
-
-            # replace the call with the documentation of the class
+                        document = parse_class(data)
+                        for old, new in REPLACES:
+                            document = document.replace(old, new)
+                        self._cache[name] = document
+                        
+            # replace the call with the documentation of the class            
             markdown = markdown.replace(
                 "{{"+class_string+"}}", self._cache[class_name])
 
