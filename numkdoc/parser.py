@@ -1,14 +1,16 @@
 import inspect
 import warnings
+import re
 
 from numpydoc.docscrape import FunctionDoc, ClassDoc
 
-from .utils import extract_wrapped
+from .utils import extract_wrapped, should_parse_method
 
 CLASS_TITLE_HEADING = 2
 CLASS_METHOD_HEADING = 4
 LINE_BREAK = lb = "\n"
 FORCE_LINE_BREAK = flb = "\n<br>\n"
+WHITE_SPACE = "&nbsp;"
 
 
 def parse_class(class_object):
@@ -17,15 +19,10 @@ def parse_class(class_object):
     # using NumpyDoc to parse the class
     doc = ClassDoc(class_object)
 
-    # start with the title, we use the class name
     markdown += heading(CLASS_TITLE_HEADING, class_object.__name__) + lb
-    # inserting summary
     markdown += parse_summary(doc)
-    # inserting signature
-    markdown += parse_init_method(class_object)
-    # inserting parameters
-    markdown += parse_parameters(doc)
-    # inserting methods
+    markdown += parse_signature(class_object.__init__)
+    markdown += parse_parameters(doc, class_object.__init__)
     markdown += parse_methods(class_object, doc)
 
     return markdown
@@ -36,8 +33,8 @@ def heading(level, name, id=None):
 
     if id is None:
         id = name
-    markdown += f"{'#' * level} ```{name}``` " + \
-        " {: #" + str(id) + " data-toc-label='" + str(id) + "'}"
+    markdown += f"{'#' * level} <code>{str(name)}</code> " + \
+        " {: #" + str(id) + " .numkdoc " + " data-toc-label='" + str(id) + "'}"
 
     return markdown
 
@@ -67,32 +64,50 @@ def parse_enum_in_signature(signature):
     return signature
 
 
-def parse_init_method(class_object):
+def parameter_signature(parameter):
+    if 'self' in parameter:
+        parameter = parameter.replace('self', "<span class='parameter-self'>self</span>")
+    if ':' in parameter:
+        # we have a type
+        try:
+            p_name, p_type = parameter.split(':')
+            if p_name[0] == '(':
+                p_name = p_name[1:]
+                line = "("
+            else:
+                line = " "
+            line += f"<span class='parameter-name'>{p_name}</span>: <span class='parameter-type'>{p_type}</span>"
+            return line
+        except:
+            pass
+    return parameter
+
+
+def parse_signature(method):
     markdown = ""
 
     try:
-        signature = "__init__" + str(inspect.signature(class_object.__init__))
-        # sanity check if enum variable in the signature
-        if "<" in signature and ":" in signature:
-            signature = parse_enum_in_signature(signature)
+        # sanity check
+        method_name = method.__name__
+        method_name = "\_\_init__" if method_name == '__init__' else method_name
 
-        markdown += heading(CLASS_METHOD_HEADING, signature, "\_\_init__")
-    except:
-        raise
-        warnings.warn(f"No signature found for class {class_object.__name__}.")
+        signature = f"{method_name}" 
+        parameters = str(inspect.signature(method))
+        first_line_padding = len(method_name.replace('\\', ''))
 
-    return markdown
+        accumulator = ""
+        for p_id, p in enumerate(re.split(r',(?![^\[]*[\]])', parameters)):
+            if p_id > 0 and (('[' in p and ']' not in p) or ('(' in p and ')' not in p)):
+                accumulator += p
+                continue
+            
+            line = parameter_signature(accumulator + p)
+            padding = WHITE_SPACE*first_line_padding if p_id > 0 else ""
+            signature += padding + line + ",<br>"
+            accumulator = ""
+        signature = signature[:-5]
 
-
-def parse_signature(doc, method):
-    markdown = ""
-
-    try:
-        method_signature = doc['Signature']
-        # sanity check if enum variable in the signature
-        if "<" in method_signature and ":" in method_signature:
-            method_signature = parse_enum_in_signature(method_signature)
-        markdown += f"{heading(CLASS_METHOD_HEADING, method_signature, method)} {lb}{lb}"
+        markdown += f"{heading(CLASS_METHOD_HEADING, signature, method_name)} {lb} {lb}"     
     except:
         raise
         warnings.warn(f"No Signature found for method {method}.")
@@ -101,18 +116,29 @@ def parse_signature(doc, method):
 
 
 def parameter_line(param):
-    return f"{indent(1)}* **{param.name}** : {param.type} {lb}{lb} {indent(3)}- {' '.join(param.desc)} {lb}{lb}"
+    if param.type not in [None, '']:
+        return f"{indent(1)}* **<span class='parameter-name'>{param.name}</span>**\
+            : <span class='parameter-type'>{param.type}</span> {lb}{lb} {indent(3)}- {' '.join(param.desc)} {lb}{lb}"
+    else:
+        return f"{indent(1)}* **<span class='parameter-name'>{param.name}</span>**\
+            {lb}{lb} {indent(3)}- {' '.join(param.desc)} {lb}{lb}"
 
 
-def parse_parameters(doc):
+def parse_parameters(doc, method=None):
     markdown = ""
 
     try:
         parameters = doc['Parameters']
         if len(parameters) > 0:
-            markdown += f"{lb}  **Parameters**{lb}{lb}"
+            markdown += f"{lb}  **Parameters**" + lb + lb
 
         for param in parameters:
+            if param.type == '' and method is not None:
+                # try to find parameter if provided by typing
+                signature = inspect.signature(method)
+                typing = str(signature.parameters[param.name]).split(':')[-1].strip()
+                param = param._replace(type = typing)
+
             markdown += parameter_line(param)
 
     except:
@@ -122,7 +148,7 @@ def parse_parameters(doc):
     return markdown
 
 
-def parse_returns(doc):
+def parse_returns(doc, method):
     markdown = ""
 
     try:
@@ -131,6 +157,16 @@ def parse_returns(doc):
             markdown += f"{lb} **Return**{lb}{lb}"
 
         for ret in returns:
+            if ret.name == '':
+                # the typing make the scraper confuse name and type
+                # we have to find the type from the signature
+                ret = ret._replace(name = ret.type)
+                signature = inspect.signature(method)
+                ret = ret._replace(type = '')
+                if '->' in str(signature):
+                    ret_type = str(signature).split('->')[-1].strip()
+                    ret = ret._replace(type = ret_type)
+
             markdown += parameter_line(ret)
 
     except:
@@ -144,7 +180,8 @@ def parse_methods(class_object, doc):
     markdown = ""
 
     # avoid private and builtin methods
-    methods = [m for m in dir(class_object) if not m.startswith('_')]
+    methods = [m for m in dir(class_object) if should_parse_method(class_object, m)]
+    
     # sanity check
     if len(methods) > 0:
         markdown += f"{lb * 2}"
@@ -159,15 +196,10 @@ def parse_methods(class_object, doc):
                     method = method if wrapped_method is None else wrapped_method
 
                 method_doc = FunctionDoc(method)
-                # inserting the signature
-                markdown += parse_signature(method_doc, method_key)
-                # inserting the summary
+                markdown += parse_signature(method)
                 markdown += parse_summary(method_doc)
-                # inserting the parameters
-                markdown += parse_parameters(method_doc)
-                # inserting return parameters
-                markdown += parse_returns(method_doc)
-                # leave a blank line
+                markdown += parse_parameters(method_doc, method)
+                markdown += parse_returns(method_doc, method)
                 markdown += flb
             except:
                 raise
