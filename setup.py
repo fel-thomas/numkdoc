@@ -7,7 +7,7 @@ with open('README.md') as f:
 setup(
     name='Numkdoc',
     packages=['numkdoc'],
-    version='0.2',
+    version='0.2.0',
     license='MIT',
 
     description='Mkdoc plugin to autodoc your numpy docstring',
