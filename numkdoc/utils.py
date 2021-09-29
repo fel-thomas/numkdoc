@@ -2,6 +2,7 @@ import inspect
 from types import FunctionType
 
 REPLACES = [
+    ("tensorflow.python.data.ops.dataset_ops.DatasetV2", "tf.Dataset"),
     ("tensorflow.python.framework.ops.Tensor", "tf.Tensor"),
     ("tensorflow.python.keras.engine.training.Model", "tf.keras.Model"),
     ("tensorflow.python.keras.engine.base_layer.Layer", "tf.keras.layers.Layer"),

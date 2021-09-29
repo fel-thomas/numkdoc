@@ -98,7 +98,7 @@ def parse_signature(method):
         accumulator = ""
         for p_id, p in enumerate(re.split(r',(?![^\[]*[\]])', parameters)):
             if p_id > 0 and (('[' in p and ']' not in p) or ('(' in p and ')' not in p)):
-                accumulator += p
+                accumulator += p + ","
                 continue
             
             line = parameter_signature(accumulator + p)
