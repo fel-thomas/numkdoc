@@ -115,13 +115,28 @@ def parse_signature(method):
     return markdown
 
 
+
 def parameter_line(param):
     if param.type not in [None, '']:
         return f"{indent(1)}* **<span class='parameter-name'>{param.name}</span>**\
-            : <span class='parameter-type'>{param.type}</span> {lb}{lb} {indent(3)}- {' '.join(param.desc)} {lb}{lb}"
+            : <span class='parameter-type'>{param.type}</span> {lb}{lb} {indent(3)}- {parameter_description(param)} {lb}{lb}"
     else:
         return f"{indent(1)}* **<span class='parameter-name'>{param.name}</span>**\
-            {lb}{lb} {indent(3)}- {' '.join(param.desc)} {lb}{lb}"
+            {lb}{lb} {indent(3)}- {parameter_description(param)} {lb}{lb}"
+
+
+def parameter_description(param):
+    # keeps the line break in the documentation only when there is a period before
+    line = "<p>"
+    for chunk in param.desc:
+        if line[-1] != '.':
+            line += f" {chunk}"
+        else:
+            line += f"</p><p> {chunk}"
+    
+    line += "</p>"
+
+    return line
 
 
 def parse_parameters(doc, method=None):
