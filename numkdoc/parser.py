@@ -91,7 +91,7 @@ def parse_signature(method):
         method_name = method.__name__
         method_name = "\_\_init__" if method_name == '__init__' else method_name
 
-        signature = f"{method_name}" 
+        signature = f"{method_name}"
         parameters = str(inspect.signature(method))
         first_line_padding = len(method_name.replace('\\', ''))
 
@@ -100,14 +100,14 @@ def parse_signature(method):
             if p_id > 0 and (('[' in p and ']' not in p) or ('(' in p and ')' not in p)):
                 accumulator += p + ","
                 continue
-            
+
             line = parameter_signature(accumulator + p)
             padding = WHITE_SPACE*first_line_padding if p_id > 0 else ""
             signature += padding + line + ",<br>"
             accumulator = ""
         signature = signature[:-5]
 
-        markdown += f"{heading(CLASS_METHOD_HEADING, signature, method_name)} {lb} {lb}"     
+        markdown += f"{heading(CLASS_METHOD_HEADING, signature, method_name)} {lb} {lb}"
     except:
         raise
         warnings.warn(f"No Signature found for method {method}.")
@@ -133,7 +133,7 @@ def parameter_description(param):
             line += f" {chunk}"
         else:
             line += f"</p><p> {chunk}"
-    
+
     line += "</p>"
 
     return line
@@ -185,8 +185,24 @@ def parse_returns(doc, method):
             markdown += parameter_line(ret)
 
     except:
-        raise
         warnings.warn(f"No return found for {doc._f.__name__}.")
+
+    return markdown
+
+
+def parse_method(method):
+    markdown = ""
+    # check if the func is wrapped (decorator)
+    if hasattr(method, "__closure__") and method.__closure__ is not None:
+        wrapped_method = extract_wrapped(method)
+        method = method if wrapped_method is None else wrapped_method
+
+    method_doc = FunctionDoc(method)
+    markdown += parse_signature(method)
+    markdown += parse_summary(method_doc)
+    markdown += parse_parameters(method_doc, method)
+    markdown += parse_returns(method_doc, method)
+    markdown += flb
 
     return markdown
 
@@ -196,7 +212,7 @@ def parse_methods(class_object, doc):
 
     # avoid private and builtin methods
     methods = [m for m in dir(class_object) if should_parse_method(class_object, m)]
-    
+
     # sanity check
     if len(methods) > 0:
         markdown += f"{lb * 2}"
@@ -204,21 +220,11 @@ def parse_methods(class_object, doc):
         for method_key in methods:
             try:
                 method = getattr(class_object, method_key)
-
-                # check if the func is wrapped (decorator)
-                if hasattr(method, "__closure__") and method.__closure__ is not None:
-                    wrapped_method = extract_wrapped(method)
-                    method = method if wrapped_method is None else wrapped_method
-
-                method_doc = FunctionDoc(method)
-                markdown += parse_signature(method)
-                markdown += parse_summary(method_doc)
-                markdown += parse_parameters(method_doc, method)
-                markdown += parse_returns(method_doc, method)
-                markdown += flb
+                markdown += parse_method(method)
             except:
-                raise
                 warnings.warn(
                     f"Skip parsing method {class_object.__name__}.{method}.")
 
     return markdown
+
+
