@@ -47,10 +47,13 @@ class Numkdoc(BasePlugin):
                 for name, data in inspect.getmembers(module, inspect.isfunction):
                     if name not in self._function_cache:
                         print('trying to parse function', name, 'with data', data)
-                        document = parse_method(data)
-                        for old, new in REPLACES:
-                            document = document.replace(old, new)
-                        self._function_cache[name] = document
+                        try:
+                            document = parse_method(data)
+                            for old, new in REPLACES:
+                                document = document.replace(old, new)
+                            self._function_cache[name] = document
+                        except:
+                            print('failed to parse function', name)
 
             # replace the call with the documentation of the class
             if class_name in self._class_cache:
