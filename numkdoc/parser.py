@@ -13,7 +13,14 @@ FORCE_LINE_BREAK = flb = "\n<br>\n"
 WHITE_SPACE = "&nbsp;"
 
 
-def parse_class(class_object):
+def parse_class(class_object, num_parents=1, skip_methods=None):
+    num_parents = int(num_parents)
+
+    if skip_methods is None:
+        skip_methods = []
+    else:
+        skip_methods = skip_methods.split(' ')
+
     markdown = ""
 
     # using NumpyDoc to parse the class
@@ -23,7 +30,7 @@ def parse_class(class_object):
     markdown += parse_summary(doc)
     markdown += parse_signature(class_object.__init__)
     markdown += parse_parameters(doc, class_object.__init__)
-    markdown += parse_methods(class_object, doc)
+    markdown += parse_methods(class_object, doc, num_parents, skip_methods)
 
     return markdown
 
@@ -115,7 +122,6 @@ def parse_signature(method):
     return markdown
 
 
-
 def parameter_line(param):
     if param.type not in [None, '']:
         return f"{indent(1)}* **<span class='parameter-name'>{param.name}</span>**\
@@ -152,7 +158,7 @@ def parse_parameters(doc, method=None):
                 # try to find parameter if provided by typing
                 signature = inspect.signature(method)
                 typing = str(signature.parameters[param.name]).split(':')[-1].strip()
-                param = param._replace(type = typing)
+                param = param._replace(type=typing)
 
             markdown += parameter_line(param)
 
@@ -175,12 +181,12 @@ def parse_returns(doc, method):
             if ret.name == '':
                 # the typing make the scraper confuse name and type
                 # we have to find the type from the signature
-                ret = ret._replace(name = ret.type)
+                ret = ret._replace(name=ret.type)
                 signature = inspect.signature(method)
-                ret = ret._replace(type = '')
+                ret = ret._replace(type='')
                 if '->' in str(signature):
                     ret_type = str(signature).split('->')[-1].strip()
-                    ret = ret._replace(type = ret_type)
+                    ret = ret._replace(type=ret_type)
 
             markdown += parameter_line(ret)
 
@@ -207,11 +213,18 @@ def parse_method(method):
     return markdown
 
 
-def parse_methods(class_object, doc):
+def parse_methods(class_object, doc, num_parents, skip_methods):
     markdown = ""
 
     # avoid private and builtin methods
-    methods = [m for m in dir(class_object) if should_parse_method(class_object, m)]
+    # and only parse methods from the class itself up to its N top parents
+    # for parsing all the methods, this revolve to:
+    # >> methods = [m for m in dir(class_object) if should_parse_method(class_object, m)]
+    methods = set(sorted(
+        m for base in class_object.__mro__[:num_parents + 1]
+        for m, val in base.__dict__.items()
+        if callable(val) and should_parse_method(class_object, m) and m not in skip_methods
+    ))
 
     # sanity check
     if len(methods) > 0:
@@ -226,5 +239,3 @@ def parse_methods(class_object, doc):
                     f"Skip parsing method {class_object.__name__}.{method}.")
 
     return markdown
-
-

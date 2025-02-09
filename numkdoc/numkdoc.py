@@ -6,6 +6,7 @@ from importlib import import_module
 from mkdocs.plugins import BasePlugin
 
 from .parser import parse_class, parse_method
+from .args_parser import parse_args
 
 
 class Numkdoc(BasePlugin):
@@ -18,13 +19,16 @@ class Numkdoc(BasePlugin):
 
         # check the documentation for all the call to a class
         # e.g {{ module.submodule.ClassName }} will render the document of 'ClassName'
-        classes_to_load = re.findall('{{(.+?)}}', markdown)
+        args = parse_args(markdown)
 
-        # sanity check
-        if len(classes_to_load) == 0:
+        # nothing to do here
+        if len(args) == 0:
             return markdown
+        classes_to_load = [arg[0] for arg in args]
+        parameters = [arg[1] for arg in args]
+        matches = [arg[2] for arg in args]
 
-        for class_string in classes_to_load:
+        for class_string, parsing_params, full_match in zip(classes_to_load, parameters, matches):
             directory = class_string.split('.')[:-1]
             class_name = class_string.split('.')[-1]
 
@@ -38,7 +42,7 @@ class Numkdoc(BasePlugin):
                 # parse and store all the classes in the module
                 for name, data in inspect.getmembers(module, inspect.isclass):
                     if name not in self._class_cache:
-                        document = parse_class(data)
+                        document = parse_class(data, **parsing_params)
                         for old, new in REPLACES:
                             document = document.replace(old, new)
                         self._class_cache[name] = document
@@ -46,22 +50,20 @@ class Numkdoc(BasePlugin):
                 # parse and store all the functions in the module
                 for name, data in inspect.getmembers(module, inspect.isfunction):
                     if name not in self._function_cache:
-                        print('trying to parse function', name, 'with data', data)
                         try:
                             document = parse_method(data)
                             for old, new in REPLACES:
                                 document = document.replace(old, new)
                             self._function_cache[name] = document
                         except:
-                            print('failed to parse function', name)
+                            print('failed to parse function', name, "with data", data)
+                            pass
 
             # replace the call with the documentation of the class
             if class_name in self._class_cache:
-                markdown = markdown.replace(
-                    "{{"+class_string+"}}", self._class_cache[class_name])
+                markdown = markdown.replace(full_match, self._class_cache[class_name])
             elif class_name in self._function_cache:
-                markdown = markdown.replace(
-                    "{{"+class_string+"}}", self._function_cache[class_name])
+                markdown = markdown.replace(full_match, self._function_cache[class_name])
             else:
                 raise ValueError(f"Class {class_string} not found.")
 
